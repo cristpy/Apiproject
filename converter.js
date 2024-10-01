@@ -1,4 +1,3 @@
-
 // Audio-to-Text(Speech Recognition)
 const speech = require(`@google-cloud/speech`);
 const fs = require('fs');
@@ -27,7 +26,6 @@ async function transcribeAudio(audioFile) {
 }
 
 // Translation (Google Cloud Translation API)
-
 const {Translate } = require(`@google-cloud/translate`).v2;
 
 async function translateText(text, targetLanguage) {
@@ -47,7 +45,7 @@ const util = require(`util`);
 async function convertTextToSpeech(text, outputAudioFile) {
     const client = new textToSpeech.TextToSpeechClient();
     const request = {
-        input: {text: text };
+        input: {text: text },
         voice: {languageCode: `en-US`, ssmlGender: `NEUTRAL`},
         audioConfig: { audioEncoding: `MP3`},
     };
