@@ -55,3 +55,29 @@ async function convertTextToSpeech(text, outputAudioFile) {
     await writeFile(outputAudioFile, response.audioContent, `binary`);
     console.log(`Audio content written to file: ${outputAudioFile}`);
 }
+
+
+const express = require(`express`);
+const  multer = require(`multer`);
+const fs = require(`fs`);
+const {transcribeAudio} = require(`./speech-to-text`);
+const {translateText} = require(`./translate`);
+const {convertTextToSpeech} = require(`./text-to-speech`);
+
+const app = express();
+const upload= multer({dest: `uploads/`});
+
+app.post(`/upload-audio`, upload.single(`audio`), async (req, res) => {
+    const audioFilePath = req.file.path;
+    const transcription = await transcribeAudio(audioFilePath);
+    const translation = await translateText(transcription, `es`);
+
+    const audioOutputPath = `output.mp3`;
+    await convertTextToSpeech(tranlation, audioOutputPath);
+
+    res.json({transcription, translation});
+});
+
+app.listen(3000, () => {
+    console.log(`Server is running on port 3000`);
+});

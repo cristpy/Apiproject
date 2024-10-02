@@ -30,4 +30,13 @@ function stopRecordig() {
 function sendAudioToBackend(audioBlob) {
     const formData = new FormData();
     formData.append(`audio`, audioBlob, `recording.wav`);
+
+    fetch(`/upload-audio`,{
+        method: `POST`,
+        body: formData
+    }).then(response => response.json())
+      .then(data => {
+        console.log(`Transcription:`, data.transcription);
+        console.log(`Translation:`, data.translation);
+      });
 }
