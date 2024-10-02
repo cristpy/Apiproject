@@ -39,7 +39,7 @@ function App() {
 }
 
 const cors = require(`cors`);
-app.use(xors());
+app.use(cors());
 
 
 export default App;
