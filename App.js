@@ -1,7 +1,5 @@
 import React, { useState } from 'react';
-import React from 'react';
 import axios from 'axios';
-import { application } from 'express';
 
 function App() {
   const [file, setFile] = useState(null);
@@ -38,20 +36,5 @@ function App() {
     </div>
   );
 }
-function App() {
-  return (
-      <div>
-          <h1>Hello, World!</h1>
-          <p>Welcome to your React application!</p>
-      </div>
-  );
-}
-
-
-const cors = require(`cors`);
-app.use(cors());
-
 
 export default App;
-
-
