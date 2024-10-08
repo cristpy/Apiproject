@@ -11,33 +11,38 @@ function App() {
     const audioChunksRef = useRef([]);
     const socketRef = useRef(null);
 
-    useEffect(() => {
-        // Create a WebSocket connection when the component mounts
-        const socket = new WebSocket('ws://localhost:5001');
-        socketRef.current = socket;
-
-        socket.onopen = () => {
-            console.log('WebSocket connection established');
-        };
-
-        socket.onmessage = (event) => {
-            console.log('Message from server:', event.data);
-            // Handle incoming messages from the WebSocket server if needed
-        };
-
-        socket.onclose = () => {
-            console.log('WebSocket connection closed');
-        };
-
-        socket.onerror = (error) => {
-            console.error('WebSocket error:', error);
-        };
-
-        // Cleanup function to close the WebSocket when the component unmounts
-        return () => {
-            socket.close();
-        };
-    }, []); // Empty dependency array means this runs once when the component mounts
+    const App = () => {
+        useEffect(() => {
+            const socket = new WebSocket('ws://localhost:5001');
+    
+            socket.onopen = () => {
+                console.log('WebSocket connection established');
+                socket.send('Hello Server!');
+            };
+    
+            socket.onmessage = (event) => {
+                console.log('Message from server:', event.data);
+            };
+    
+            socket.onerror = (error) => {
+                console.error('WebSocket error:', error);
+            };
+    
+            socket.onclose = (event) => {
+                console.log('WebSocket connection closed:', event);
+            };
+    
+            // Cleanup on unmount
+            return () => {
+                socket.close();
+            };
+        }, []);
+    
+        return <div>WebSocket Test</div>;
+    };
+    
+    
+    
 
     const startRecording = () => {
         navigator.mediaDevices.getUserMedia({ audio: true })
@@ -71,6 +76,7 @@ function App() {
         formData.append('audio', audioBlob, 'recording.wav');
 
         try {
+            console.log('Sending audio to backend...');
             const response = await axios.post('http://localhost:5000/upload-audio', formData, {
                 headers: {
                     'Content-Type': 'multipart/form-data',
@@ -87,6 +93,7 @@ function App() {
             }
         } catch (error) {
             console.error('Error uploading the audio:', error);
+            alert('Failed to upload audio. Please check the server.');
         }
     };
 
@@ -109,6 +116,7 @@ function App() {
         formData.append('audio', uploadedAudioFile, uploadedAudioFile.name);
 
         try {
+            console.log('Uploading audio file...');
             const response = await axios.post('http://localhost:5000/upload-audio', formData, {
                 headers: {
                     'Content-Type': 'multipart/form-data',
@@ -125,6 +133,7 @@ function App() {
             }
         } catch (error) {
             console.error('Error uploading the audio file:', error);
+            alert('Failed to upload audio file. Please check the server.');
         }
     };
 
