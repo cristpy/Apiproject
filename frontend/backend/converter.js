@@ -9,6 +9,7 @@ const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
 const rateLimit = require('express-rate-limit');
 const ffmpeg = require('fluent-ffmpeg');
+const WebSocket = require('ws');
 
 // Initialize Express app
 const app = express();
@@ -154,10 +155,30 @@ app.post('/upload-audio', upload.single('audio'), async (req, res) => {
     }
 });
 
-// Start the server
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
+// Initialize WebSocket server
+const wss = new WebSocket.Server({ noServer: true });
+
+// Handle WebSocket connections
+wss.on('connection', (ws) => {
+    console.log('WebSocket connection established');
+
+    ws.on('message', (message) => {
+        console.log('Received:', message);
+        // You can handle incoming messages here
+    });
+
+    ws.on('close', () => {
+        console.log('WebSocket connection closed');
+    });
 });
 
-app.use(cors());
+// Upgrade HTTP server to handle WebSocket connections
+const server = app.listen(process.env.PORT || 5001, () => {
+    console.log(`Server is running on port ${process.env.PORT || 5001}`);
+});
+
+server.on('upgrade', (request, socket, head) => {
+    wss.handleUpgrade(request, socket, head, (ws) => {
+        wss.emit('connection', ws, request);
+    });
+});

@@ -8,8 +8,6 @@
 
   "scripts": {
 
-    "start": "concurrently \"npm run frontend\" \"npm run backend\"",
-
     "frontend": "react-scripts start",
 
     "backend": "node frontend/backend/converter.js",
