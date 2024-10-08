@@ -34,7 +34,7 @@ async function transcribeAudio(audioUrl) {
 }
 
 // Example usage
-const audioUrl = 'https://assembly.ai/sports_injuries.mp3'; 
+const audioUrl = 'https://storage.googleapis.com/aai-docs-samples/sports_injuries.mp3'; 
 transcribeAudio(audioUrl).then(transcription => {
     console.log('Transcription:', transcription);
 });
