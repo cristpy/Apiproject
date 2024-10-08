@@ -8,9 +8,13 @@
 
   "scripts": {
 
+    "start": "concurrently \"npm run frontend\" \"npm run backend\"",
+
     "frontend": "react-scripts start",
-    "backend": "node backend/converter.js",
-    "start": "concurrently \"npm run frontend\" \"npm run backend\""
+
+    "backend": "node frontend/backend/converter.js",
+
+    "dev": "concurrently \"npm run frontend\" \"npm run backend\""
 
   },
 
@@ -66,7 +70,9 @@
 
     "util": "^0.12.5",
 
-    "uuid": "^10.0.0"
+    "uuid": "^10.0.0",
+
+    "ws": "^8.18.0"
 
   },
 

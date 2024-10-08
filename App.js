@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
 
 function App() {
@@ -7,6 +7,29 @@ function App() {
   const [audioUrl, setAudioUrl] = useState('');
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
+
+  useEffect(() => {
+    // Create a WebSocket connection when the component mounts
+    const socket = new WebSocket('ws://localhost:5001');
+
+    socket.onopen = () => {
+      console.log('WebSocket connection established');
+    };
+
+    socket.onmessage = (event) => {
+      console.log('Message from server:', event.data);
+      // Handle incoming messages from the WebSocket server if needed
+    };
+
+    socket.onclose = () => {
+      console.log('WebSocket connection closed');
+    };
+
+    // Cleanup function to close the WebSocket when the component unmounts
+    return () => {
+      socket.close();
+    };
+  }, []); // Empty dependency array means this runs once when the component mounts
 
   const startRecording = () => {
     navigator.mediaDevices.getUserMedia({ audio: true })
@@ -40,7 +63,7 @@ function App() {
     formData.append('audio', audioBlob, 'recording.wav');
 
     try {
-      const response = await axios.post('http://localhost:3000/upload-audio', formData, {
+      const response = await axios.post('http://localhost:5000/upload-audio', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -48,7 +71,7 @@ function App() {
 
       setTranscription(response.data.transcription);
       setTranslation(response.data.translation);
-      setAudioUrl(`http://localhost:3000/${response.data.audioFile}`);
+      setAudioUrl(`http://localhost:5000/${response.data.audioFile}`);
     } catch (error) {
       console.error('Error uploading the audio:', error);
     }

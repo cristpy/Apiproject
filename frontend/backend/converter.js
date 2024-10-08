@@ -22,7 +22,7 @@ app.use(limiter);
 
 // Use CORS middleware
 app.use(cors({
-    origin: 'http://localhost:3001', // Update with your frontend's origin
+    origin: 'http://localhost:3000', // Update with your frontend's origin
     methods: ['GET', 'POST'],
 }));
 
@@ -71,7 +71,7 @@ async function transcribeAudio(audioFile) {
         // Upload audio to AssemblyAI
         const uploadResponse = await axios.post('https://api.assemblyai.com/v2/upload', fs.createReadStream(convertedFilePath), {
             headers: {
-                authorization: process.env.ASSEMBLYAI_API_KEY, // Use your AssemblyAI API key
+                authorization: process.env.API_KEY, // Use your AssemblyAI API key
             },
         });
 
@@ -82,7 +82,7 @@ async function transcribeAudio(audioFile) {
             audio_url: uploadResponse.data.upload_url,
         }, {
             headers: {
-                authorization: process.env.ASSEMBLYAI_API_KEY,
+                authorization: process.env.API_KEY,
             },
         });
 
@@ -92,7 +92,7 @@ async function transcribeAudio(audioFile) {
             await new Promise(res => setTimeout(res, 5000)); // Wait for 5 seconds
             result = await axios.get(`https://api.assemblyai.com/v2/transcript/${transcriptId}`, {
                 headers: {
-                    authorization: process.env.ASSEMBLYAI_API_KEY,
+                    authorization: process.env.API_KEY,
                 },
             });
         } while (result.data.status !== 'completed' && result.data.status !== 'failed');
@@ -117,7 +117,7 @@ async function translateText(text, targetLanguage) {
             target_language: targetLanguage,
         }, {
             headers: {
-                authorization: process.env.ASSEMBLYAI_API_KEY,
+                authorization: process.env.API_KEY,
             },
         });
 
@@ -155,7 +155,9 @@ app.post('/upload-audio', upload.single('audio'), async (req, res) => {
 });
 
 // Start the server
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
 });
+
+app.use(cors());
