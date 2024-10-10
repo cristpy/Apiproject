@@ -46,7 +46,10 @@ function convertAudio(inputPath, outputPath) {
             .outputOptions(['-ar 16000', '-ac 1', '-f wav'])
             .save(outputPath)
             .on('end', resolve)
-            .on('error', reject);
+            .on('error', (err) => {
+                console.error('FFmpeg conversion error:', err);
+                reject(err);
+            });
     });
 }
 
@@ -77,24 +80,34 @@ async function transcribeAudio(audioFile) {
         } while (result.data.status !== 'completed' && result.data.status !== 'failed');
 
         fs.unlinkSync(convertedFilePath);
-        return result.data.text;
+        return result.data;
     } catch (error) {
-        console.error('Transcription error:', error);
-        throw new Error('Transcription failed');
+        console.error('Error in transcribing audio:', error);
+        throw error;
     }
 }
 
-// Route for uploading audio via file
+// Upload audio route
 app.post('/upload-audio', upload.single('audio'), async (req, res) => {
+    const audioFilePath = req.file.path;
+    const audioFileName = req.file.filename;
+
     try {
-        if (!req.file) {
-            return res.status(400).json({ error: 'No audio file uploaded' });
-        }
-        const transcription = await transcribeAudio(req.file.path);
-        res.json({ transcription });
+        const transcriptionData = await transcribeAudio(audioFilePath);
+        const { text, translation } = transcriptionData;
+
+        res.json({
+            transcription: text,
+            translation: translation || 'No translation available',
+            audioFile: audioFileName
+        });
     } catch (error) {
-        console.error('Error handling audio file:', error);
-        res.status(500).json({ error: 'Failed to process audio file' });
+        res.status(500).json({ error: 'Failed to transcribe audio' });
+    } finally {
+        // Clean up uploaded file
+        fs.unlink(audioFilePath, (err) => {
+            if (err) console.error('Failed to delete uploaded file:', err);
+        });
     }
 });
 
@@ -102,23 +115,18 @@ app.post('/upload-audio', upload.single('audio'), async (req, res) => {
 const wss = new WebSocket.Server({ port: 5001 });
 
 wss.on('connection', (ws) => {
-    console.log('WebSocket connection established');
-
+    console.log('Client connected');
     ws.on('message', (message) => {
         console.log('Received:', message);
+        // Handle received messages here
     });
-
     ws.on('close', () => {
-        console.log('WebSocket connection closed');
-    });
-
-    ws.on('error', (error) => {
-        console.error('WebSocket error:', error);
+        console.log('Client disconnected');
     });
 });
 
-// Start server
-app.listen(5000, () => {
-    console.log('Server is running on port 5000');
+// Start the server
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
 });
-    

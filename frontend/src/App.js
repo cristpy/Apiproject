@@ -5,8 +5,8 @@ function App() {
     const [transcription, setTranscription] = useState('');
     const [translation, setTranslation] = useState('');
     const [audioUrl, setAudioUrl] = useState('');
-    const [uploadedAudioFile, setUploadedAudioFile] = useState(null); // State to hold uploaded file
-    const [audioFileUrl, setAudioFileUrl] = useState(''); // State to hold URL input
+    const [uploadedAudioFile, setUploadedAudioFile] = useState(null);
+    const [audioFileUrl, setAudioFileUrl] = useState('');
     const mediaRecorderRef = useRef(null);
     const audioChunksRef = useRef([]);
     const socketRef = useRef(null);
@@ -37,31 +37,28 @@ function App() {
         };
     }, []);
 
-    const startRecording = () => {
-        navigator.mediaDevices.getUserMedia({ audio: true })
-            .then(stream => {
-                mediaRecorderRef.current = new MediaRecorder(stream);
-                mediaRecorderRef.current.ondataavailable = event => {
-                    audioChunksRef.current.push(event.data);
-                };
-                mediaRecorderRef.current.onstop = () => {
-                    const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
-                    const audioUrl = URL.createObjectURL(audioBlob);
-                    setAudioUrl(audioUrl);
-                    sendAudioToBackend(audioBlob);
-                    audioChunksRef.current = [];
-                };
-                mediaRecorderRef.current.start();
-            })
-            .catch(error => {
-                console.error("Error accessing the microphone: ", error);
-            });
+    const startRecording = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorderRef.current = new MediaRecorder(stream);
+            mediaRecorderRef.current.ondataavailable = (event) => {
+                audioChunksRef.current.push(event.data);
+            };
+            mediaRecorderRef.current.onstop = () => {
+                const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
+                const audioUrl = URL.createObjectURL(audioBlob);
+                setAudioUrl(audioUrl);
+                sendAudioToBackend(audioBlob);
+                audioChunksRef.current = [];
+            };
+            mediaRecorderRef.current.start();
+        } catch (error) {
+            console.error("Error accessing the microphone: ", error);
+        }
     };
 
     const stopRecording = () => {
-        if (mediaRecorderRef.current) {
-            mediaRecorderRef.current.stop();
-        }
+        mediaRecorderRef.current?.stop(); // Use optional chaining to stop recording
     };
 
     const sendAudioToBackend = async (audioBlob) => {
@@ -77,8 +74,8 @@ function App() {
             setTranslation(response.data.translation);
             setAudioUrl(`http://localhost:5000/${response.data.audioFile}`);
 
-            // Optionally notify the WebSocket server
-            if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+            // Notify the WebSocket server
+            if (socketRef.current?.readyState === WebSocket.OPEN) {
                 socketRef.current.send('Audio uploaded successfully');
             }
         } catch (error) {
@@ -88,11 +85,11 @@ function App() {
     };
 
     const handleFileChange = (event) => {
-        setUploadedAudioFile(event.target.files[0]); // Update state with selected file
+        setUploadedAudioFile(event.target.files[0]);
     };
 
     const uploadFile = async (event) => {
-        event.preventDefault(); // Prevent default form submission
+        event.preventDefault();
         if (!uploadedAudioFile) {
             console.error("No audio file selected");
             return;
@@ -110,8 +107,8 @@ function App() {
             setTranslation(response.data.translation);
             setAudioUrl(`http://localhost:5000/${response.data.audioFile}`);
 
-            // Optionally notify the WebSocket server
-            if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+            // Notify the WebSocket server
+            if (socketRef.current?.readyState === WebSocket.OPEN) {
                 socketRef.current.send('File uploaded successfully');
             }
         } catch (error) {
@@ -121,7 +118,7 @@ function App() {
     };
 
     const handleUrlChange = (event) => {
-        setAudioFileUrl(event.target.value); // Update state with URL input
+        setAudioFileUrl(event.target.value);
     };
 
     const uploadUrl = async () => {
@@ -136,6 +133,7 @@ function App() {
             setTranslation(response.data.translation);
         } catch (error) {
             console.error('Error uploading the audio URL:', error);
+            alert('Failed to upload audio URL. Please check the server.');
         }
     };
 
@@ -157,7 +155,12 @@ function App() {
             </form>
 
             <h2>Upload Audio URL</h2>
-            <input type="text" value={audioFileUrl} onChange={handleUrlChange} placeholder="Enter audio URL" />
+            <input
+                type="text"
+                value={audioFileUrl}
+                onChange={handleUrlChange}
+                placeholder="Enter audio URL"
+            />
             <button onClick={uploadUrl}>Upload URL</button>
         </div>
     );
