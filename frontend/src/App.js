@@ -11,38 +11,31 @@ function App() {
     const audioChunksRef = useRef([]);
     const socketRef = useRef(null);
 
-    const App = () => {
-        useEffect(() => {
-            const socket = new WebSocket('ws://localhost:5001');
-    
-            socket.onopen = () => {
-                console.log('WebSocket connection established');
-                socket.send('Hello Server!');
-            };
-    
-            socket.onmessage = (event) => {
-                console.log('Message from server:', event.data);
-            };
-    
-            socket.onerror = (error) => {
-                console.error('WebSocket error:', error);
-            };
-    
-            socket.onclose = (event) => {
-                console.log('WebSocket connection closed:', event);
-            };
-    
-            // Cleanup on unmount
-            return () => {
-                socket.close();
-            };
-        }, []);
-    
-        return <div>WebSocket Test</div>;
-    };
-    
-    
-    
+    // WebSocket connection
+    useEffect(() => {
+        const socket = new WebSocket('ws://localhost:5001');
+        socketRef.current = socket;
+
+        socket.onopen = () => {
+            console.log('WebSocket connection established');
+        };
+
+        socket.onmessage = (event) => {
+            console.log('Message from server:', event.data);
+        };
+
+        socket.onerror = (error) => {
+            console.error('WebSocket error:', error);
+        };
+
+        socket.onclose = (event) => {
+            console.log('WebSocket connection closed:', event);
+        };
+
+        return () => {
+            socket.close();
+        };
+    }, []);
 
     const startRecording = () => {
         navigator.mediaDevices.getUserMedia({ audio: true })
@@ -76,18 +69,15 @@ function App() {
         formData.append('audio', audioBlob, 'recording.wav');
 
         try {
-            console.log('Sending audio to backend...');
             const response = await axios.post('http://localhost:5000/upload-audio', formData, {
-                headers: {
-                    'Content-Type': 'multipart/form-data',
-                },
+                headers: { 'Content-Type': 'multipart/form-data' },
             });
 
             setTranscription(response.data.transcription);
             setTranslation(response.data.translation);
             setAudioUrl(`http://localhost:5000/${response.data.audioFile}`);
 
-            // Optionally send a message to the WebSocket server after audio upload
+            // Optionally notify the WebSocket server
             if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
                 socketRef.current.send('Audio uploaded successfully');
             }
@@ -101,10 +91,6 @@ function App() {
         setUploadedAudioFile(event.target.files[0]); // Update state with selected file
     };
 
-    const handleUrlChange = (event) => {
-        setAudioFileUrl(event.target.value); // Update state with URL input
-    };
-
     const uploadFile = async (event) => {
         event.preventDefault(); // Prevent default form submission
         if (!uploadedAudioFile) {
@@ -116,24 +102,40 @@ function App() {
         formData.append('audio', uploadedAudioFile, uploadedAudioFile.name);
 
         try {
-            console.log('Uploading audio file...');
             const response = await axios.post('http://localhost:5000/upload-audio', formData, {
-                headers: {
-                    'Content-Type': 'multipart/form-data',
-                },
+                headers: { 'Content-Type': 'multipart/form-data' },
             });
 
             setTranscription(response.data.transcription);
             setTranslation(response.data.translation);
             setAudioUrl(`http://localhost:5000/${response.data.audioFile}`);
 
-            // Optionally send a message to the WebSocket server after upload
+            // Optionally notify the WebSocket server
             if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
                 socketRef.current.send('File uploaded successfully');
             }
         } catch (error) {
             console.error('Error uploading the audio file:', error);
             alert('Failed to upload audio file. Please check the server.');
+        }
+    };
+
+    const handleUrlChange = (event) => {
+        setAudioFileUrl(event.target.value); // Update state with URL input
+    };
+
+    const uploadUrl = async () => {
+        if (!audioFileUrl) {
+            alert('Please enter a valid audio URL.');
+            return;
+        }
+
+        try {
+            const response = await axios.post('http://localhost:5000/upload-audio', { url: audioFileUrl });
+            setTranscription(response.data.transcription);
+            setTranslation(response.data.translation);
+        } catch (error) {
+            console.error('Error uploading the audio URL:', error);
         }
     };
 
@@ -150,22 +152,13 @@ function App() {
 
             <h2>Upload Audio File</h2>
             <form onSubmit={uploadFile}>
-                <input 
-                    type="file" 
-                    accept="audio/*" 
-                    onChange={handleFileChange} 
-                />
+                <input type="file" accept="audio/*" onChange={handleFileChange} />
                 <button type="submit">Upload</button>
             </form>
 
             <h2>Upload Audio URL</h2>
-            <input 
-                type="text" 
-                value={audioFileUrl} 
-                onChange={handleUrlChange} 
-                placeholder="Enter audio URL" 
-            />
-            <button onClick={uploadFile}>Upload URL</button>
+            <input type="text" value={audioFileUrl} onChange={handleUrlChange} placeholder="Enter audio URL" />
+            <button onClick={uploadUrl}>Upload URL</button>
         </div>
     );
 }

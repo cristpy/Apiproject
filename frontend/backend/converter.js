@@ -1,5 +1,3 @@
-// converter.js
-
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -11,69 +9,55 @@ const rateLimit = require('express-rate-limit');
 const ffmpeg = require('fluent-ffmpeg');
 const WebSocket = require('ws');
 
-// Initialize Express app
 const app = express();
 
-// Rate Limiting
+// Rate limiting
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 100, // limit each IP to 100 requests per windowMs
 });
 app.use(limiter);
 
-// Use CORS middleware
-app.use(cors({
-    origin: 'http://localhost:3000', // Update with your frontend's origin
-    methods: ['GET', 'POST'],
-}));
+// CORS settings
+app.use(cors({ origin: 'http://localhost:3000', methods: ['GET', 'POST'] }));
 
-// Middleware for file uploads
+// Multer settings for file uploads
 const upload = multer({
     dest: 'uploads/',
     limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
     fileFilter: (req, file, cb) => {
-        if (file.mimetype.startsWith('audio/')) {
-            cb(null, true);
-        } else {
-            cb(new Error('Invalid file type'), false);
-        }
+        if (file.mimetype.startsWith('audio/')) cb(null, true);
+        else cb(new Error('Invalid file type'), false);
     }
 });
 
-// Serve static files from the 'outputs' directory
+// Serve static files
 app.use('/outputs', express.static('outputs'));
 
-// Add a GET route for the root URL
+// Basic root route
 app.get('/', (req, res) => {
     res.send('<h1>Welcome to the Audio to Text Converter API</h1>');
 });
 
-// Function to convert audio to LINEAR16 format with 16000 Hz sample rate
+// Audio conversion function
 function convertAudio(inputPath, outputPath) {
     return new Promise((resolve, reject) => {
         ffmpeg(inputPath)
-            .outputOptions([
-                '-ar 16000', // Set audio sampling rate to 16000 Hz
-                '-ac 1',     // Set number of audio channels to 1
-                '-f wav'     // Set output format to WAV
-            ])
+            .outputOptions(['-ar 16000', '-ac 1', '-f wav'])
             .save(outputPath)
             .on('end', resolve)
             .on('error', reject);
     });
 }
 
-// Transcribe audio using AssemblyAI
+// Audio transcription
 async function transcribeAudio(audioFile) {
     try {
         const convertedFilePath = `converted_${audioFile}.wav`;
         await convertAudio(audioFile, convertedFilePath);
 
-        // Upload audio to AssemblyAI
         const uploadResponse = await axios.post('https://api.assemblyai.com/v2/upload', fs.createReadStream(convertedFilePath), {
-            headers: {
-                authorization: process.env.API_KEY, // Use your AssemblyAI API key
-            },
+            headers: { authorization: process.env.API_KEY },
         });
 
         const transcriptId = uploadResponse.data.id;
@@ -81,104 +65,60 @@ async function transcribeAudio(audioFile) {
         // Request transcription
         const transcriptResponse = await axios.post('https://api.assemblyai.com/v2/transcript', {
             audio_url: uploadResponse.data.upload_url,
-        }, {
-            headers: {
-                authorization: process.env.API_KEY,
-            },
-        });
+        }, { headers: { authorization: process.env.API_KEY } });
 
         // Poll for the transcription result
         let result;
         do {
             await new Promise(res => setTimeout(res, 5000)); // Wait for 5 seconds
             result = await axios.get(`https://api.assemblyai.com/v2/transcript/${transcriptId}`, {
-                headers: {
-                    authorization: process.env.API_KEY,
-                },
+                headers: { authorization: process.env.API_KEY },
             });
         } while (result.data.status !== 'completed' && result.data.status !== 'failed');
 
-        const transcription = result.data.text;
-
-        // Clean up converted file
         fs.unlinkSync(convertedFilePath);
-
-        return transcription;
+        return result.data.text;
     } catch (error) {
-        console.error('Error during transcription:', error);
+        console.error('Transcription error:', error);
         throw new Error('Transcription failed');
     }
 }
 
-// Translate text using AssemblyAI
-async function translateText(text, targetLanguage) {
-    try {
-        const translationResponse = await axios.post('https://api.assemblyai.com/v2/translate', {
-            text: text,
-            target_language: targetLanguage,
-        }, {
-            headers: {
-                authorization: process.env.API_KEY,
-            },
-        });
-
-        return translationResponse.data.translation;
-    } catch (error) {
-        console.error('Error during translation:', error);
-        throw new Error('Translation failed');
-    }
-}
-
-// Route for uploading audio
+// Route for uploading audio via file
 app.post('/upload-audio', upload.single('audio'), async (req, res) => {
     try {
-        const audioFilePath = req.file.path;
-        const transcription = await transcribeAudio(audioFilePath);
-        const translation = await translateText(transcription, 'es'); // Translate to Spanish
-
-        const uniqueId = uuidv4();
-        const audioOutputPath = `outputs/output_${uniqueId}.mp3`; // Assuming you'll want to output an MP3 of the translation
-        await convertTextToSpeech(translation, audioOutputPath);
-
-        res.json({ 
-            transcription, 
-            translation, 
-            audioFile: `outputs/output_${uniqueId}.mp3` 
-        });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    } finally {
-        // Clean up uploaded file
-        if (req.file && fs.existsSync(req.file.path)) {
-            fs.unlinkSync(req.file.path);
+        if (!req.file) {
+            return res.status(400).json({ error: 'No audio file uploaded' });
         }
+        const transcription = await transcribeAudio(req.file.path);
+        res.json({ transcription });
+    } catch (error) {
+        console.error('Error handling audio file:', error);
+        res.status(500).json({ error: 'Failed to process audio file' });
     }
 });
 
-// Initialize WebSocket server
-const wss = new WebSocket.Server({ noServer: true });
+// WebSocket server
+const wss = new WebSocket.Server({ port: 5001 });
 
-// Handle WebSocket connections
 wss.on('connection', (ws) => {
     console.log('WebSocket connection established');
 
     ws.on('message', (message) => {
         console.log('Received:', message);
-        // You can handle incoming messages here
     });
 
     ws.on('close', () => {
         console.log('WebSocket connection closed');
     });
-});
 
-// Upgrade HTTP server to handle WebSocket connections
-const server = app.listen(process.env.PORT || 5001, () => {
-    console.log(`Server is running on port ${process.env.PORT || 5001}`);
-});
-
-server.on('upgrade', (request, socket, head) => {
-    wss.handleUpgrade(request, socket, head, (ws) => {
-        wss.emit('connection', ws, request);
+    ws.on('error', (error) => {
+        console.error('WebSocket error:', error);
     });
 });
+
+// Start server
+app.listen(5000, () => {
+    console.log('Server is running on port 5000');
+});
+    
