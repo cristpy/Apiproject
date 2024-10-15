@@ -1,6 +1,8 @@
 // converter.js
+require('dotenv').config(); 
+console.log('Loaded API Key:', process.env.API_KEY);
 
-require('dotenv').config();
+
 const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
@@ -69,65 +71,47 @@ function convertAudio(inputPath, outputPath) {
 async function transcribeAudio(audioFile) {
     try {
         const convertedFilePath = `converted_${audioFile}.wav`;
+        console.log(`Converting audio to: ${convertedFilePath}`);
         await convertAudio(audioFile, convertedFilePath);
 
-        // Upload audio to AssemblyAI
-        const uploadResponse = await axios.post('https://api.assemblyai.com/v2/upload', fs.createReadStream(convertedFilePath), {
-            headers: {
-                authorization: process.env.API_KEY, // Use your AssemblyAI API key
-            },
-        });
+        console.log('Uploading audio to AssemblyAI...');
+        const uploadResponse = await axios.post(
+            'https://api.assemblyai.com/v2/upload', 
+            fs.createReadStream(convertedFilePath), 
+            { headers: { authorization: process.env.API_KEY } }
+        );
+        console.log('Upload Response:', uploadResponse.data);
 
         const transcriptId = uploadResponse.data.id;
+        console.log(`Transcript ID: ${transcriptId}`);
 
-        // Request transcription
-        const transcriptResponse = await axios.post('https://api.assemblyai.com/v2/transcript', {
-            audio_url: uploadResponse.data.upload_url,
-        }, {
-            headers: {
-                authorization: process.env.API_KEY,
-            },
-        });
+        const transcriptResponse = await axios.post(
+            'https://api.assemblyai.com/v2/transcript', 
+            { audio_url: uploadResponse.data.upload_url }, 
+            { headers: { authorization: process.env.API_KEY } }
+        );
+        console.log('Transcript Request Response:', transcriptResponse.data);
 
-        // Poll for the transcription result
+        // Poll for transcription result
         let result;
         do {
-            await new Promise(res => setTimeout(res, 5000)); // Wait for 5 seconds
-            result = await axios.get(`https://api.assemblyai.com/v2/transcript/${transcriptId}`, {
-                headers: {
-                    authorization: process.env.API_KEY,
-                },
-            });
+            console.log('Polling for transcription result...');
+            await new Promise(res => setTimeout(res, 5000)); // Wait 5 seconds
+            result = await axios.get(
+                `https://api.assemblyai.com/v2/transcript/${transcriptId}`, 
+                { headers: { authorization: process.env.API_KEY } }
+            );
+            console.log('Polling Response:', result.data);
         } while (result.data.status !== 'completed' && result.data.status !== 'failed');
 
         const transcription = result.data.text;
+        console.log('Transcription:', transcription);
 
-        // Clean up converted file
-        fs.unlinkSync(convertedFilePath);
-
+        fs.unlinkSync(convertedFilePath); // Clean up the converted file
         return transcription;
     } catch (error) {
-        console.error('Error during transcription:', error);
+        console.error('Error during transcription:', error.response ? error.response.data : error.message);
         throw new Error('Transcription failed');
-    }
-}
-
-// Translate text using AssemblyAI
-async function translateText(text, targetLanguage) {
-    try {
-        const translationResponse = await axios.post('https://api.assemblyai.com/v2/translate', {
-            text: text,
-            target_language: targetLanguage,
-        }, {
-            headers: {
-                authorization: process.env.API_KEY,
-            },
-        });
-
-        return translationResponse.data.translation;
-    } catch (error) {
-        console.error('Error during translation:', error);
-        throw new Error('Translation failed');
     }
 }
 
@@ -146,25 +130,47 @@ async function convertTextToSpeech(text, outputPath) {
 // Route for uploading audio
 app.post('/upload-audio', upload.single('audio'), async (req, res) => {
     try {
-        const audioFilePath = req.file.path;
-        const transcription = await transcribeAudio(audioFilePath);
-        const translation = await translateText(transcription, 'es'); // Translate to Spanish
+        // Ensure the file was uploaded successfully
+        if (!req.file) {
+            throw new Error('No audio file uploaded');
+        }
 
+        const audioFilePath = req.file.path;
+        console.log(`Audio file uploaded: ${audioFilePath}`);
+
+        // Step 1: Transcribe the audio
+        const transcription = await transcribeAudio(audioFilePath);
+        console.log(`Transcription: ${transcription}`);
+
+        // Step 2: Translate the transcription (e.g., to Spanish)
+        const translation = await translateText(transcription, 'es');
+        console.log(`Translation: ${translation}`);
+
+        // Step 3: Convert the translation to speech and save it as an MP3
         const uniqueId = uuidv4();
-        const audioOutputPath = `outputs/output_${uniqueId}.mp3`; // Assuming you'll want to output an MP3 of the translation
+        const audioOutputPath = `outputs/output_${uniqueId}.mp3`;
+        console.log(`Saving translated audio to: ${audioOutputPath}`);
         await convertTextToSpeech(translation, audioOutputPath);
 
-        res.json({ 
-            transcription, 
-            translation, 
-            audioFile: `outputs/output_${uniqueId}.mp3` 
+        // Send the response to the client
+        res.json({
+            transcription,
+            translation,
+            audioFile: `outputs/output_${uniqueId}.mp3`
         });
+
     } catch (error) {
+        console.error('Error during audio processing:', error);
         res.status(500).json({ error: error.message });
     } finally {
-        // Clean up uploaded file
+        // Clean up uploaded audio file to save space
         if (req.file && fs.existsSync(req.file.path)) {
-            fs.unlinkSync(req.file.path);
+            try {
+                fs.unlinkSync(req.file.path);
+                console.log(`Uploaded file deleted: ${req.file.path}`);
+            } catch (unlinkError) {
+                console.error(`Failed to delete uploaded file: ${unlinkError.message}`);
+            }
         }
     }
 });
