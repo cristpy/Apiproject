@@ -1,169 +1,75 @@
-import React, { useState, useRef, useEffect } from 'react';
+// src/App.js
+
+import React, { useState } from 'react';
 import axios from 'axios';
 
-function App() {
-    const [transcription, setTranscription] = useState('');
-    const [translation, setTranslation] = useState('');
-    const [audioUrl, setAudioUrl] = useState('');
-    const [uploadedAudioFile, setUploadedAudioFile] = useState(null);
-    const [audioFileUrl, setAudioFileUrl] = useState('');
-    const mediaRecorderRef = useRef(null);
-    const audioChunksRef = useRef([]);
-    const socketRef = useRef(null);
-
-    // WebSocket connection
-    useEffect(() => {
-        const socket = new WebSocket('ws://localhost:5001');
-        socketRef.current = socket;
-
-        socket.onopen = () => {
-            console.log('WebSocket connection established');
-        };
-
-        socket.onmessage = (event) => {
-            console.log('Message from server:', event.data);
-        };
-
-        socket.onerror = (error) => {
-            console.error('WebSocket error:', error);
-        };
-
-        socket.onclose = (event) => {
-            console.log('WebSocket connection closed:', event);
-        };
-
-        return () => {
-            socket.close();
-        };
-    }, []);
-
-    const startRecording = async () => {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            mediaRecorderRef.current = new MediaRecorder(stream);
-            mediaRecorderRef.current.ondataavailable = (event) => {
-                audioChunksRef.current.push(event.data);
-            };
-            mediaRecorderRef.current.onstop = () => {
-                const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
-                const audioUrl = URL.createObjectURL(audioBlob);
-                setAudioUrl(audioUrl);
-                sendAudioToBackend(audioBlob);
-                audioChunksRef.current = [];
-            };
-            mediaRecorderRef.current.start();
-        } catch (error) {
-            console.error("Error accessing the microphone: ", error);
-        }
-    };
-
-    const stopRecording = () => {
-        mediaRecorderRef.current?.stop(); // Use optional chaining to stop recording
-    };
-
-    const sendAudioToBackend = async (audioBlob) => {
-        const formData = new FormData();
-        formData.append('audio', audioBlob, 'recording.wav');
-
-        try {
-            const response = await axios.post('http://localhost:5000/upload-audio', formData, {
-                headers: { 'Content-Type': 'multipart/form-data' },
-            });
-
-            setTranscription(response.data.transcription);
-            setTranslation(response.data.translation);
-            setAudioUrl(`http://localhost:5000/${response.data.audioFile}`);
-
-            // Notify the WebSocket server
-            if (socketRef.current?.readyState === WebSocket.OPEN) {
-                socketRef.current.send('Audio uploaded successfully');
-            }
-        } catch (error) {
-            console.error('Error uploading the audio:', error);
-            alert('Failed to upload audio. Please check the server.');
-        }
-    };
+const App = () => {
+    const [audioFile, setAudioFile] = useState(null);
+    const [output, setOutput] = useState(null);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState(null);
 
     const handleFileChange = (event) => {
-        setUploadedAudioFile(event.target.files[0]);
+        setAudioFile(event.target.files[0]);
     };
 
-    const uploadFile = async (event) => {
-        event.preventDefault();
-        if (!uploadedAudioFile) {
-            console.error("No audio file selected");
+    const handleUpload = async () => {
+        if (!audioFile) {
+            alert('Please select an audio file first.');
             return;
         }
 
         const formData = new FormData();
-        formData.append('audio', uploadedAudioFile, uploadedAudioFile.name);
+        formData.append('audio', audioFile);
+
+        setLoading(true);
+        setError(null);
+        setOutput(null);
 
         try {
             const response = await axios.post('http://localhost:5000/upload-audio', formData, {
-                headers: { 'Content-Type': 'multipart/form-data' },
+                headers: {
+                    'Content-Type': 'multipart/form-data',
+                },
             });
 
-            setTranscription(response.data.transcription);
-            setTranslation(response.data.translation);
-            setAudioUrl(`http://localhost:5000/${response.data.audioFile}`);
-
-            // Notify the WebSocket server
-            if (socketRef.current?.readyState === WebSocket.OPEN) {
-                socketRef.current.send('File uploaded successfully');
+            // Check if the response has the expected structure
+            if (response.data && response.data.transcription) {
+                setOutput(response.data);
+            } else {
+                setError('Unexpected response structure');
             }
-        } catch (error) {
-            console.error('Error uploading the audio file:', error);
-            alert('Failed to upload audio file. Please check the server.');
-        }
-    };
-
-    const handleUrlChange = (event) => {
-        setAudioFileUrl(event.target.value);
-    };
-
-    const uploadUrl = async () => {
-        if (!audioFileUrl) {
-            alert('Please enter a valid audio URL.');
-            return;
-        }
-
-        try {
-            const response = await axios.post('http://localhost:5000/upload-audio', { url: audioFileUrl });
-            setTranscription(response.data.transcription);
-            setTranslation(response.data.translation);
-        } catch (error) {
-            console.error('Error uploading the audio URL:', error);
-            alert('Failed to upload audio URL. Please check the server.');
+        } catch (err) {
+            setError('Failed to upload audio file');
+            console.error(err);
+        } finally {
+            setLoading(false);
         }
     };
 
     return (
-        <div className="App">
-            <h1>Audio to Text Converter</h1>
-            <div>
-                <button onClick={startRecording}>Start Recording</button>
-                <button onClick={stopRecording}>Stop Recording</button>
-            </div>
-            {audioUrl && <audio controls src={audioUrl}></audio>}
-            {transcription && <p><strong>Transcription:</strong> {transcription}</p>}
-            {translation && <p><strong>Translation:</strong> {translation}</p>}
+        <div style={{ padding: '20px' }}>
+            <h1>Audio Upload and Transcription</h1>
+            <input type="file" accept="audio/*" onChange={handleFileChange} />
+            <button onClick={handleUpload} disabled={loading}>
+                {loading ? 'Uploading...' : 'Upload Audio'}
+            </button>
 
-            <h2>Upload Audio File</h2>
-            <form onSubmit={uploadFile}>
-                <input type="file" accept="audio/*" onChange={handleFileChange} />
-                <button type="submit">Upload</button>
-            </form>
+            {error && <p style={{ color: 'red' }}>{error}</p>}
 
-            <h2>Upload Audio URL</h2>
-            <input
-                type="text"
-                value={audioFileUrl}
-                onChange={handleUrlChange}
-                placeholder="Enter audio URL"
-            />
-            <button onClick={uploadUrl}>Upload URL</button>
+            {output && (
+                <div>
+                    <h2>Output:</h2>
+                    <p><strong>Transcription:</strong> {output.transcription}</p>
+                    <p><strong>Translation:</strong> {output.translation}</p>
+                    <audio controls>
+                        <source src={`http://localhost:5000/${output.audioFile}`} type="audio/mpeg" />
+                        Your browser does not support the audio element.
+                    </audio>
+                </div>
+            )}
         </div>
     );
-}
+};
 
 export default App;

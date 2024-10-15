@@ -1,3 +1,5 @@
+// converter.js
+
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -8,59 +10,72 @@ const { v4: uuidv4 } = require('uuid');
 const rateLimit = require('express-rate-limit');
 const ffmpeg = require('fluent-ffmpeg');
 const WebSocket = require('ws');
+const textToSpeech = require('@google-cloud/text-to-speech'); // Import Google Cloud Text-to-Speech
+const client = new textToSpeech.TextToSpeechClient(); // Create a client
 
+// Initialize Express app
 const app = express();
 
-// Rate limiting
+// Rate Limiting
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 100, // limit each IP to 100 requests per windowMs
 });
 app.use(limiter);
 
-// CORS settings
-app.use(cors({ origin: 'http://localhost:3000', methods: ['GET', 'POST'] }));
+// Use CORS middleware
+app.use(cors({
+    origin: 'http://localhost:3000', // Update with your frontend's origin
+    methods: ['GET', 'POST'],
+}));
 
-// Multer settings for file uploads
+// Middleware for file uploads
 const upload = multer({
     dest: 'uploads/',
     limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
     fileFilter: (req, file, cb) => {
-        if (file.mimetype.startsWith('audio/')) cb(null, true);
-        else cb(new Error('Invalid file type'), false);
+        if (file.mimetype.startsWith('audio/')) {
+            cb(null, true);
+        } else {
+            cb(new Error('Invalid file type'), false);
+        }
     }
 });
 
-// Serve static files
+// Serve static files from the 'outputs' directory
 app.use('/outputs', express.static('outputs'));
 
-// Basic root route
+// Add a GET route for the root URL
 app.get('/', (req, res) => {
     res.send('<h1>Welcome to the Audio to Text Converter API</h1>');
 });
 
-// Audio conversion function
+// Function to convert audio to LINEAR16 format with 16000 Hz sample rate
 function convertAudio(inputPath, outputPath) {
     return new Promise((resolve, reject) => {
         ffmpeg(inputPath)
-            .outputOptions(['-ar 16000', '-ac 1', '-f wav'])
+            .outputOptions([
+                '-ar 16000', // Set audio sampling rate to 16000 Hz
+                '-ac 1',     // Set number of audio channels to 1
+                '-f wav'     // Set output format to WAV
+            ])
             .save(outputPath)
             .on('end', resolve)
-            .on('error', (err) => {
-                console.error('FFmpeg conversion error:', err);
-                reject(err);
-            });
+            .on('error', reject);
     });
 }
 
-// Audio transcription
+// Transcribe audio using AssemblyAI
 async function transcribeAudio(audioFile) {
     try {
         const convertedFilePath = `converted_${audioFile}.wav`;
         await convertAudio(audioFile, convertedFilePath);
 
+        // Upload audio to AssemblyAI
         const uploadResponse = await axios.post('https://api.assemblyai.com/v2/upload', fs.createReadStream(convertedFilePath), {
-            headers: { authorization: process.env.API_KEY },
+            headers: {
+                authorization: process.env.API_KEY, // Use your AssemblyAI API key
+            },
         });
 
         const transcriptId = uploadResponse.data.id;
@@ -68,65 +83,116 @@ async function transcribeAudio(audioFile) {
         // Request transcription
         const transcriptResponse = await axios.post('https://api.assemblyai.com/v2/transcript', {
             audio_url: uploadResponse.data.upload_url,
-        }, { headers: { authorization: process.env.API_KEY } });
+        }, {
+            headers: {
+                authorization: process.env.API_KEY,
+            },
+        });
 
         // Poll for the transcription result
         let result;
         do {
             await new Promise(res => setTimeout(res, 5000)); // Wait for 5 seconds
             result = await axios.get(`https://api.assemblyai.com/v2/transcript/${transcriptId}`, {
-                headers: { authorization: process.env.API_KEY },
+                headers: {
+                    authorization: process.env.API_KEY,
+                },
             });
         } while (result.data.status !== 'completed' && result.data.status !== 'failed');
 
+        const transcription = result.data.text;
+
+        // Clean up converted file
         fs.unlinkSync(convertedFilePath);
-        return result.data;
+
+        return transcription;
     } catch (error) {
-        console.error('Error in transcribing audio:', error);
-        throw error;
+        console.error('Error during transcription:', error);
+        throw new Error('Transcription failed');
     }
 }
 
-// Upload audio route
-app.post('/upload-audio', upload.single('audio'), async (req, res) => {
-    const audioFilePath = req.file.path;
-    const audioFileName = req.file.filename;
-
+// Translate text using AssemblyAI
+async function translateText(text, targetLanguage) {
     try {
-        const transcriptionData = await transcribeAudio(audioFilePath);
-        const { text, translation } = transcriptionData;
+        const translationResponse = await axios.post('https://api.assemblyai.com/v2/translate', {
+            text: text,
+            target_language: targetLanguage,
+        }, {
+            headers: {
+                authorization: process.env.API_KEY,
+            },
+        });
 
-        res.json({
-            transcription: text,
-            translation: translation || 'No translation available',
-            audioFile: audioFileName
+        return translationResponse.data.translation;
+    } catch (error) {
+        console.error('Error during translation:', error);
+        throw new Error('Translation failed');
+    }
+}
+
+// Convert text to speech using Google Cloud Text-to-Speech
+async function convertTextToSpeech(text, outputPath) {
+    const request = {
+        input: { text: text },
+        voice: { languageCode: 'es-ES', name: 'es-ES-Wavenet-A' }, // Spanish voice
+        audioConfig: { audioEncoding: 'MP3' },
+    };
+
+    const [response] = await client.synthesizeSpeech(request);
+    fs.writeFileSync(outputPath, response.audioContent, 'binary');
+}
+
+// Route for uploading audio
+app.post('/upload-audio', upload.single('audio'), async (req, res) => {
+    try {
+        const audioFilePath = req.file.path;
+        const transcription = await transcribeAudio(audioFilePath);
+        const translation = await translateText(transcription, 'es'); // Translate to Spanish
+
+        const uniqueId = uuidv4();
+        const audioOutputPath = `outputs/output_${uniqueId}.mp3`; // Assuming you'll want to output an MP3 of the translation
+        await convertTextToSpeech(translation, audioOutputPath);
+
+        res.json({ 
+            transcription, 
+            translation, 
+            audioFile: `outputs/output_${uniqueId}.mp3` 
         });
     } catch (error) {
-        res.status(500).json({ error: 'Failed to transcribe audio' });
+        res.status(500).json({ error: error.message });
     } finally {
         // Clean up uploaded file
-        fs.unlink(audioFilePath, (err) => {
-            if (err) console.error('Failed to delete uploaded file:', err);
-        });
+        if (req.file && fs.existsSync(req.file.path)) {
+            fs.unlinkSync(req.file.path);
+        }
     }
 });
 
-// WebSocket server
-const wss = new WebSocket.Server({ port: 5001 });
+// Initialize WebSocket server
+const wss = new WebSocket.Server({ noServer: true });
 
+// Handle WebSocket connections
 wss.on('connection', (ws) => {
-    console.log('Client connected');
+    console.log('WebSocket connection established');
+
     ws.on('message', (message) => {
         console.log('Received:', message);
-        // Handle received messages here
+        // You can handle incoming messages here
     });
+
     ws.on('close', () => {
-        console.log('Client disconnected');
+        console.log('WebSocket connection closed');
     });
 });
 
-// Start the server
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+// Upgrade HTTP server to handle WebSocket connections
+const server = app.listen(process.env.PORT || 5001, () => {
+    console.log(`Server is running on port ${process.env.PORT || 5001}`);
+});
+
+server.on('upgrade', (request, socket, head) => {
+    wss.handleUpgrade(request, socket, head, (ws) => {
+        wss.emit('connection', ws, request);
+    });
 });
