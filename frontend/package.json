@@ -14,7 +14,7 @@
   "scripts": {
     "start": "concurrently \"npm run frontend\" \"npm run backend\"",
     "frontend": "react-scripts start",
-    "backend": "node frontend/backend/converter.js",
+    "backend": "node frontend/backend/converter.ts",
     "dev": "concurrently \"npm run frontend\" \"npm run backend\""
   },
   "eslintConfig": {
