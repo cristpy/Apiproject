@@ -74,6 +74,10 @@
 
     "react-scripts": "^5.0.1",
 
+    "sass": "^1.80.0",
+
+    "sass-loader": "^16.0.2",
+
     "translate": "^3.0.1",
 
     "util": "^0.12.5",
