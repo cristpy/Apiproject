@@ -4,7 +4,12 @@ import axios from 'axios';
 import ffmpeg from 'fluent-ffmpeg';
 
 dotenv.config();
-console.log('API_KEY:', process.env.API_KEY);
+const apikey = process.env.API_KEY || ''; // More specific environment variable
+
+if (!apikey) {
+  console.error('Error: Missing AssemblyAI API key in environment variables');
+  process.exit(1);
+}
 
 // Define interfaces for API responses
 interface UploadResponse {
@@ -29,7 +34,7 @@ async function convertAudio(inputPath: string, outputPath: string): Promise<stri
       .save(outputPath)
       .on('end', () => resolve(outputPath))
       .on('error', (err: Error) => {
-        console.error('Error converting audio:', err);
+        console.error('Error converting audio:', err.message);
         reject(err);
       });
   });
@@ -37,60 +42,68 @@ async function convertAudio(inputPath: string, outputPath: string): Promise<stri
 
 // Transcribe audio using AssemblyAI
 async function transcribeAudio(filePath: string): Promise<string> {
-  const apiKey = process.env.API_KEY;
-  if (!apiKey) throw new Error('API key not found in environment variables.');
-
   const convertedFilePath = `${filePath}.wav`;
 
   try {
     await convertAudio(filePath, convertedFilePath);
 
     // Upload audio to AssemblyAI
-    const uploadResponse = await axios.post<UploadResponse>(
-      'https://api.assemblyai.com/v2/upload',
-      fs.createReadStream(convertedFilePath),
-      { headers: { authorization: apiKey } }
-    );
-
-    const audioUrl = uploadResponse.data.upload_url;
+    const audioUrl = await uploadAudioToAssemblyAI(convertedFilePath);
     console.log('Uploaded audio URL:', audioUrl);
 
     // Request transcription
-    const transcriptResponse = await axios.post<TranscriptResponse>(
-      'https://api.assemblyai.com/v2/transcript',
-      { audio_url: audioUrl },
-      { headers: { authorization: apiKey } }
-    );
-
-    const transcriptId = transcriptResponse.data.id;
+    const transcriptId = await requestTranscription(audioUrl);
     console.log(`Transcript ID: ${transcriptId}`);
 
-    // Poll for the transcription result with a timeout
-    const text = await pollTranscriptionResult(transcriptId, apiKey);
+    // Poll for transcription result
+    const text = await pollTranscriptionResult(transcriptId, apikey);
     return text;
   } catch (error: any) {
-    console.error('Transcription Error:', error.response?.data || error.message);
+    console.error('Transcription Error:', error.message);
     throw new Error('Failed to process the audio');
   } finally {
-    cleanUpFiles([convertedFilePath, filePath]);
+    await cleanUpFiles([convertedFilePath, filePath]);
   }
+}
+
+// Upload audio file to AssemblyAI
+async function uploadAudioToAssemblyAI(filePath: string): Promise<string> {
+  const stream = fs.createReadStream(filePath);
+
+  const { data } = await axios.post<UploadResponse>(
+    'https://api.assemblyai.com/v2/upload',
+    stream,
+    { headers: { authorization: apikey, 'Content-Type': 'multipart/form-data' } }
+  );
+
+  return data.upload_url;
+}
+
+// Request transcription from AssemblyAI
+async function requestTranscription(audioUrl: string): Promise<string> {
+  const { data } = await axios.post<TranscriptResponse>(
+    'https://api.assemblyai.com/v2/transcript',
+    { audio_url: audioUrl },
+    { headers: { authorization: apikey } }
+  );
+
+  return data.id;
 }
 
 // Poll the transcription status with a timeout
 async function pollTranscriptionResult(
   transcriptId: string,
   apiKey: string,
-  timeout: number = 30000
+  timeout: number = 60000, // Timeout increased to 60 seconds, can be configurable
+  pollInterval: number = 5000 // Poll every 5 seconds
 ): Promise<string> {
   const startTime = Date.now();
 
   while (Date.now() - startTime < timeout) {
-    const response = await axios.get<TranscriptStatusResponse>(
+    const { data: statusResponse } = await axios.get<TranscriptStatusResponse>(
       `https://api.assemblyai.com/v2/transcript/${transcriptId}`,
       { headers: { authorization: apiKey } }
     );
-
-    const statusResponse = response.data;
 
     if (statusResponse.status === 'completed') {
       return statusResponse.text!;
@@ -98,39 +111,44 @@ async function pollTranscriptionResult(
       throw new Error('Transcription failed: ' + statusResponse.error);
     }
 
-    await new Promise((res) => setTimeout(res, 5000)); // Wait 5 seconds
+    await new Promise((res) => setTimeout(res, pollInterval)); // Wait pollInterval milliseconds
   }
 
   throw new Error('Transcription timed out.');
 }
 
-// Clean up files after processing
-function cleanUpFiles(files: string[]) {
+// Clean up files after processing (async version)
+async function cleanUpFiles(files: string[]): Promise<void> {
   for (const file of files) {
     if (fs.existsSync(file)) {
-      fs.unlinkSync(file);
-      console.log(`Deleted file: ${file}`);
+      fs.unlink(file, (err) => {
+        if (err) console.error(`Failed to delete file: ${file}`, err);
+        else console.log(`Deleted file: ${file}`);
+      });
     }
   }
 }
 
+// Translate text using LibreTranslate
 async function translateText(text: string, targetLanguage: string): Promise<string> {
-    try {
-      const response = await axios.post('https://libretranslate.de/translate', {
+  try {
+    const { data } = await axios.post(
+      'https://libretranslate.de/translate',
+      {
         q: text,
-        source: 'en',           // Source language (adjust if needed)
+        source: 'en', // Source language (adjust if needed)
         target: targetLanguage, // Target language passed to the function
         format: 'text',
-      }, {
-        headers: { 'Content-Type': 'application/json' }
-      });
-  
-      console.log(`Translation result: ${response.data.translatedText}`);
-      return response.data.translatedText;
-    } catch (error: any) {
-      console.error('Translation Error:', error.message);
-      throw new Error('Failed to translate the text.');
-    }
+      },
+      { headers: { 'Content-Type': 'application/json' } }
+    );
+
+    console.log(`Translation result: ${data.translatedText}`);
+    return data.translatedText;
+  } catch (error: any) {
+    console.error('Translation Error:', error.message);
+    throw new Error('Failed to translate the text.');
+  }
 }
 
 export { transcribeAudio, translateText };
