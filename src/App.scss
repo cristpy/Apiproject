@@ -1,0 +1,77 @@
+// src/App.scss
+.container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+    text-align: center;
+    font-family: 'Arial', sans-serif;
+  }
+  
+  h1 {
+    font-size: 2rem;
+    color: #333;
+  }
+  
+  .upload-section {
+    margin: 20px 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  
+  .record-section {
+    margin-top: 10px;
+  }
+  
+  .language-section {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    margin-top: 20px;
+  }
+  
+  select {
+    padding: 5px;
+    font-size: 1rem;
+  }
+  
+  .upload-button {
+    margin-top: 20px;
+  }
+  
+  button {
+    padding: 10px 20px;
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+  }
+  
+  button:disabled {
+    background-color: #ddd;
+    cursor: not-allowed;
+  }
+  
+  button:hover:not(:disabled) {
+    background-color: #45a049;
+  }
+  
+  .output-section {
+    margin-top: 30px;
+  }
+  
+  .translation-section {
+    margin-top: 20px;
+  }
+  
+  .error-message {
+    color: red;
+    font-weight: bold;
+  }
+  
+  audio {
+    margin-top: 10px;
+  }
+  
