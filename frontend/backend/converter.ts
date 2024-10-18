@@ -114,23 +114,10 @@ function cleanUpFiles(files: string[]) {
   }
 }
 
+// Dummy translation function
 async function translateText(text: string, targetLanguage: string): Promise<string> {
-    try {
-      const response = await axios.post('https://libretranslate.de/translate', {
-        q: text,
-        source: 'en',           // Source language (adjust if needed)
-        target: targetLanguage, // Target language passed to the function
-        format: 'text',
-      }, {
-        headers: { 'Content-Type': 'application/json' }
-      });
-  
-      console.log(`Translation result: ${response.data.translatedText}`);
-      return response.data.translatedText;
-    } catch (error: any) {
-      console.error('Translation Error:', error.message);
-      throw new Error('Failed to translate the text.');
-    }
+  console.log(`Translating text to ${targetLanguage}:`, text);
+  return `Translated (${targetLanguage}): ${text}`;
 }
 
 export { transcribeAudio, translateText };
