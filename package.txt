@@ -1,0 +1,7 @@
+npm install sass --save-dev
+npm install node-sass --save-dev
+npm install concurrently --save-dev
+npm install dotenv
+
+mac
+brew install ffmpeg
