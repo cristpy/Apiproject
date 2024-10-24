@@ -2,6 +2,7 @@ import * as dotenv from 'dotenv';
 import * as fs from 'fs';
 import axios from 'axios';
 import ffmpeg from 'fluent-ffmpeg';
+import path from 'path';
 
 dotenv.config();
 console.log('API_KEY:', process.env.API_KEY);
@@ -18,6 +19,7 @@ interface TranscriptResponse {
 interface TranscriptStatusResponse {
   status: 'completed' | 'failed' | 'processing';
   text?: string;
+  words?: { start: number; end: number; text: string }[]; // Add word-level timestamps
   error?: string;
 }
 
@@ -36,11 +38,12 @@ async function convertAudio(inputPath: string, outputPath: string): Promise<stri
 }
 
 // Transcribe audio using AssemblyAI
-async function transcribeAudio(filePath: string): Promise<string> {
+async function transcribeAudio(filePath: string, timeout: number = 30000): Promise<{ text: string; srtPath: string }> {
   const apiKey = process.env.API_KEY;
   if (!apiKey) throw new Error('API key not found in environment variables.');
 
   const convertedFilePath = `${filePath}.wav`;
+  const srtFilePath = `${filePath}.srt`;
 
   try {
     await convertAudio(filePath, convertedFilePath);
@@ -53,21 +56,20 @@ async function transcribeAudio(filePath: string): Promise<string> {
     );
 
     const audioUrl = uploadResponse.data.upload_url;
-    console.log('Uploaded audio URL:', audioUrl);
 
     // Request transcription
     const transcriptResponse = await axios.post<TranscriptResponse>(
       'https://api.assemblyai.com/v2/transcript',
-      { audio_url: audioUrl },
+      { audio_url: audioUrl, format_text: true },
       { headers: { authorization: apiKey } }
     );
 
     const transcriptId = transcriptResponse.data.id;
-    console.log(`Transcript ID: ${transcriptId}`);
 
-    // Poll for the transcription result with a timeout
-    const text = await pollTranscriptionResult(transcriptId, apiKey);
-    return text;
+    // Poll for the transcription result
+    const transcriptData = await pollTranscriptionResult(transcriptId, apiKey, timeout);
+
+    return { text: transcriptData.text!, srtPath: srtFilePath };
   } catch (error: any) {
     console.error('Transcription Error:', error.response?.data || error.message);
     throw new Error('Failed to process the audio');
@@ -80,8 +82,8 @@ async function transcribeAudio(filePath: string): Promise<string> {
 async function pollTranscriptionResult(
   transcriptId: string,
   apiKey: string,
-  timeout: number = 30000
-): Promise<string> {
+  timeout: number
+): Promise<TranscriptStatusResponse> {
   const startTime = Date.now();
 
   while (Date.now() - startTime < timeout) {
@@ -93,12 +95,12 @@ async function pollTranscriptionResult(
     const statusResponse = response.data;
 
     if (statusResponse.status === 'completed') {
-      return statusResponse.text!;
+      return statusResponse;
     } else if (statusResponse.status === 'failed') {
       throw new Error('Transcription failed: ' + statusResponse.error);
     }
 
-    await new Promise((res) => setTimeout(res, 5000)); // Wait 5 seconds
+    await new Promise((res) => setTimeout(res, 5000));
   }
 
   throw new Error('Transcription timed out.');
@@ -106,18 +108,12 @@ async function pollTranscriptionResult(
 
 // Clean up files after processing
 function cleanUpFiles(files: string[]) {
-  for (const file of files) {
+  files.forEach(file => {
     if (fs.existsSync(file)) {
       fs.unlinkSync(file);
       console.log(`Deleted file: ${file}`);
     }
-  }
+  });
 }
 
-// Dummy translation function
-async function translateText(text: string, targetLanguage: string): Promise<string> {
-  console.log(`Translating text to ${targetLanguage}:`, text);
-  return `Translated (${targetLanguage}): ${text}`;
-}
-
-export { transcribeAudio, translateText };
+export { transcribeAudio };
