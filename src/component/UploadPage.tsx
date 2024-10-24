@@ -53,7 +53,8 @@ const UploadPage: React.FC = () => {
       }, 2000);
     } catch (error: any) {
       console.error('Error uploading file:', error);
-      setError('Failed to upload and process audio file.');
+      const errorMessage = error.response?.data?.error || 'Failed to upload and process audio file.';
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
