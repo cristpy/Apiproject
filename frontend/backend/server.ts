@@ -40,13 +40,15 @@ app.post('/upload-audio', upload.single('audio'), async (req: Request, res: Resp
             return;
         }
 
-        // Process the audio file: Transcription + Translation
+        // Process the audio file: Transcription
         const transcription = await converter.transcribeAudio(filePath);
-        const translation = await converter.translateText(transcription, 'es');
 
-        if (fs.existsSync(filePath)) fs.unlinkSync(filePath); // Cleanup
+        // Cleanup the uploaded file
+        if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+        }
 
-        res.json({ transcription, translation });
+        res.json({ transcription });
     } catch (error: any) {
         console.error('Error:', error.message);
         res.status(500).json({ error: 'Failed to process the audio' });
