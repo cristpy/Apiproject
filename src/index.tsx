@@ -1,15 +1,17 @@
+// client/src/index.tsx
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { BrowserRouter } from 'react-router-dom';
 import App from './App';
+import './index.scss'; 
 
-const rootElement = document.getElementById('root'); // This should get the div
-if (!rootElement) {
-  console.error('Root element not found');
-} else {
-  const root = ReactDOM.createRoot(rootElement); // Pass the root element
-  root.render(
-    <React.StrictMode>
+const container = document.getElementById('root');
+const root = ReactDOM.createRoot(container!);
+
+root.render(
+  <React.StrictMode>
+    <BrowserRouter>
       <App />
-    </React.StrictMode>
-  );
-}
+    </BrowserRouter>
+  </React.StrictMode>
+);
